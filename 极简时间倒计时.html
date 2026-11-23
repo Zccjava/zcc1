@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project A - 多任务倒计时助手</title>
+    <style>
+    body { font-family: 'Microsoft YaHei', sans-serif; background-color: #1e1e2f; color: #fff; padding: 20px; }
+    h2 { text-align: center; color: #4CAF50; font-size: 1.5rem; }
+    
+    /* 输入区域改成自动换行 */
+    .input-group { 
+        display: flex; 
+        flex-wrap: wrap; 
+        justify-content: center; 
+        gap: 10px; 
+        margin-bottom: 20px; 
+    }
+    
+    /* 输入框自适应宽度，手机上占满整行 */
+    input { 
+        padding: 10px; 
+        border-radius: 5px; 
+        border: 1px solid #555; 
+        background-color: #2b2b3d; 
+        color: #fff; 
+        flex: 1 1 40%; /* 电脑上占40%，手机上会自动撑开 */
+    }
+    
+    button { 
+        padding: 10px 15px; 
+        border: none; 
+        border-radius: 5px; 
+        background-color: #4CAF50; 
+        color: white; 
+        cursor: pointer; 
+        font-weight: bold; 
+        flex: 1 1 100%; /* 添加任务按钮独占一行 */
+    }
+    
+    button:hover { background-color: #45a049; }
+    #task-list { max-width: 600px; margin: 0 auto; }
+    
+    .task-item { 
+        background-color: #2b2b3d; 
+        padding: 15px; 
+        margin-bottom: 10px; 
+        border-radius: 8px; 
+        display: flex; 
+        flex-direction: column; /* 手机上任务上下排列 */
+        gap: 10px;
+        border-left: 5px solid #4CAF50; 
+    }
+    
+    /* 删除按钮靠右 */
+    .btn-delete { background-color: #f44336; align-self: flex-end; padding: 5px 10px; font-size: 0.8em; }
+    .task-item.finished { border-left-color: #f44336; opacity: 0.7; }
+    .time-display { font-size: 1.2em; font-weight: bold; color: #FFD700; display: block; margin-top: 5px;}
+    
+    /* 电脑端显示的样式调整 */
+    @media (min-width: 600px) {
+        .task-item { flex-direction: row; justify-content: space-between; align-items: center; }
+        button { flex: none; }
+        input { flex: 1; }
+    }
+</style>
+</head>
+<body>
+
+    <h2>Master的专属倒计时面板</h2>
+    
+    <div class="input-group">
+        <input type="text" id="taskName" placeholder="任务名称 (如: 舰队到达)">
+        <input type="number" id="taskMinutes" placeholder="倒计时(分钟)" min="1">
+        <button onclick="addTask()">添加任务</button>
+    </div>
+
+    <div id="task-list">
+        <!-- 任务列表会在这里渲染出来 -->
+    </div>
+
+    <script>
+        // 从本地存储读取任务数组，如果没有就新建一个空数组
+        let tasks = JSON.parse(localStorage.getItem('myTasks')) || [];
+
+        // 添加任务
+        function addTask() {
+            let name = document.getElementById('taskName').value;
+            let minutes = parseFloat(document.getElementById('taskMinutes').value);
+
+            if (!name || !minutes || minutes <= 0) {
+                alert("请输入正确的任务名称和分钟数！");
+                return;
+            }
+
+            // 计算结束时间 = 当前时间戳 + 分钟数*60*1000毫秒
+            let endTime = Date.now() + (minutes * 60 * 1000);
+
+            // 推入数组
+            tasks.push({ id: Date.now(), name: name, endTime: endTime, isFinished: false });
+
+            // 清空输入框
+            document.getElementById('taskName').value = '';
+            document.getElementById('taskMinutes').value = '';
+
+            saveAndRender();
+        }
+
+        // 删除任务
+        function deleteTask(id) {
+            tasks = tasks.filter(task => task.id !== id);
+            saveAndRender();
+        }
+
+        // 保存到localStorage并渲染页面
+        function saveAndRender() {
+            localStorage.setItem('myTasks', JSON.stringify(tasks));
+            renderTasks();
+        }
+
+        // 渲染UI
+        function renderTasks() {
+            let listContainer = document.getElementById('task-list');
+            listContainer.innerHTML = ''; // 先清空
+
+            tasks.forEach(task => {
+                let div = document.createElement('div');
+                div.className = 'task-item' + (task.isFinished ? ' finished' : '');
+                div.id = 'task-' + task.id;
+
+                div.innerHTML = `
+                    <div>
+                        <strong>${task.name}</strong><br>
+                        <span class="time-display" id="time-${task.id}">计算中...</span>
+                    </div>
+                    <button class="btn-delete" onclick="deleteTask(${task.id})">删除</button>
+                `;
+                listContainer.appendChild(div);
+            });
+        }
+
+        // 核心：每秒刷新所有任务的倒计时
+        setInterval(() => {
+            let now = Date.now();
+            let needRender = false;
+
+            tasks.forEach(task => {
+                let span = document.getElementById('time-' + task.id);
+                if (!span) return; // 如果UI上没有这个元素（比如刚被删了），跳过
+
+                let diff = task.endTime - now;
+
+                if (diff > 0) {
+                    let h = Math.floor(diff / (1000 * 60 * 60));
+                    let m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                    let s = Math.floor((diff % (1000 * 60)) / 1000);
+                    span.innerText = `剩余: ${h}时 ${m}分 ${s}秒`;
+                } else {
+                    span.innerText = "时间到！快去操作！";
+                    span.style.color = "#f44336";
+                    if (!task.isFinished) {
+                        task.isFinished = true;
+                        needRender = true; // 状态变了，需要重新渲染样式
+                        // 这里可以加弹窗或声音
+                        // alert(`【${task.name}】时间到了！`); 
+                    }
+                }
+            });
+
+            if (needRender) {
+                saveAndRender(); // 把完成状态存起来
+            }
+        }, 1000);
+
+        // 页面加载时先渲染一次
+        renderTasks();
+    </script>
+</body>
+</html>
